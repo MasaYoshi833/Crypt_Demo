@@ -19,7 +19,7 @@ st.set_page_config(page_title="Y coin 取引", layout="wide")
 if "user" not in st.session_state:
     st.session_state.user = None
 if "wallet" not in st.session_state:
-    st.session_state.wallet = {"Ycoin": 5.0, "JPY": 10000.0}
+    st.session_state.wallet = {"Ycoin": 0.0, "JPY": 10000.0}
 if "price_history" not in st.session_state:
     base_date = datetime.date(2025, 7, 1)
     st.session_state.price_history = [
@@ -41,8 +41,7 @@ dummy_users = ["UserA", "UserB", "UserC"]
 # ----------------------
 def update_price():
     last_price = st.session_state.market_price
-    # 激しい乱高下
-    change = random.randint(-100, 100)
+    change = random.randint(-100, 100)  # 激しい乱高下
     new_price = max(100, last_price + change)
     st.session_state.market_price = new_price
     st.session_state.price_history.append((datetime.date.today(), new_price))
@@ -53,7 +52,7 @@ def update_price():
 # ダミーユーザー取引生成
 # ----------------------
 def simulate_dummy_trades():
-    if random.random() < 0.5:  # 50%の確率で売買
+    if random.random() < 0.5:
         user = random.choice(dummy_users)
         side = random.choice(["buy", "sell"])
         amount = round(random.uniform(0.1, 1.0), 2)
@@ -79,10 +78,7 @@ def simulate_dummy_trades():
 # ----------------------
 def execute_trade(user, side, amount, place):
     price = st.session_state.market_price
-    if place == "販売所":
-        fee_rate = 0.02
-    else:
-        fee_rate = 0.005
+    fee_rate = 0.02 if place == "販売所" else 0.005
 
     if side == "buy":
         cost = price * amount * (1 + fee_rate)
@@ -122,14 +118,24 @@ def execute_trade(user, side, amount, place):
         st.session_state.trade_history.pop()
 
 # ----------------------
-# ログイン
+# ログイン画面
 # ----------------------
 if not st.session_state.user:
     st.title("Y coin 取引")
-    username = st.text_input("ユーザー名を入力してください")
+
+    col1, col2 = st.columns([1, 3])  # 左側狭く
+    with col1:
+        username = st.text_input("ユーザー名", max_chars=20)
+
     if st.button("ログイン") and username:
         st.session_state.user = username
         st.rerun()
+
+    if st.button("新規登録") and username:
+        st.session_state.user = username
+        st.session_state.wallet = {"Ycoin": 0.0, "JPY": 5000.0}
+        st.rerun()
+
 else:
     st.title("Y coin 取引")
     st.write(f"👤 ユーザー名: {st.session_state.user}")
@@ -145,27 +151,18 @@ else:
     st.write(f"合計: {market_value:.2f} 円(Mock)")
 
     # ----------------------
-    # レイアウト（PCは左右分割 / モバイルは上下配置）
+    # PCは左右分割 / モバイルは自動で上下
     # ----------------------
-    if st.columns(2)[0]._width < 400:  # 簡易的にモバイル判定
-        layout_mode = "mobile"
-    else:
-        layout_mode = "pc"
-
-    if layout_mode == "pc":
-        col1, col2 = st.columns(2)
-    else:
-        col1 = st.container()
-        col2 = st.container()
+    col1, col2 = st.columns(2)
 
     # ----------------------
     # 販売所
     # ----------------------
     with col1:
         st.subheader("販売所（手数料 2%）")
+        update_price()
 
         # 価格推移
-        update_price()
         dates, prices = zip(*st.session_state.price_history)
         fig, ax = plt.subplots()
         ax.plot(dates, prices, marker="o")
@@ -183,7 +180,6 @@ else:
             st.dataframe(df.head(10))
 
         # 売買
-        st.write("取引")
         side = st.radio("売買選択", ["buy", "sell"], horizontal=True)
         amount = st.number_input("数量 (Ycoin)", min_value=0.01, step=0.01)
         if st.button("販売所で実行"):
@@ -194,19 +190,14 @@ else:
     # ----------------------
     with col2:
         st.subheader("取引所（手数料 0.5%）")
-
-        # 板
         st.write("買い板 / 売り板（ダミー）")
         st.write("（自動マッチング中）")
 
-        # 履歴
         st.write("取引履歴（直近10件）")
         df = pd.DataFrame(st.session_state.trade_history)
         if not df.empty:
             st.dataframe(df.head(10))
 
-        # 売買
-        st.write("取引")
         side = st.radio("売買選択", ["buy", "sell"], horizontal=True, key="ex_side")
         amount = st.number_input("数量 (Ycoin)", min_value=0.01, step=0.01, key="ex_amt")
         if st.button("取引所で実行"):
