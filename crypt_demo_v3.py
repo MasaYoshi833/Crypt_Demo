@@ -18,38 +18,35 @@ st.set_page_config(page_title="Y coin 取引", layout="wide")
 # ----------------------
 if "user" not in st.session_state:
     st.session_state.user = None
-if "wallet" not in st.session_state:
-    st.session_state.wallet = {"Ycoin": 0.0, "JPY": 10000.0}
+if "wallets" not in st.session_state:
+    st.session_state.wallets = {}
 if "price_history" not in st.session_state:
     base_date = datetime.date(2025, 7, 1)
     st.session_state.price_history = [
-        (base_date + datetime.timedelta(days=i), 1000 + random.randint(-100, 100))
+        (base_date + datetime.timedelta(days=i), 100 + random.randint(-10, 10))
         for i in range(10)
     ]
 if "market_price" not in st.session_state:
     st.session_state.market_price = st.session_state.price_history[-1][1]
-if "exchange_orders" not in st.session_state:
-    st.session_state.exchange_orders = {"buy": [], "sell": []}
 if "trade_history" not in st.session_state:
     st.session_state.trade_history = []
 
-# ダミーユーザー
 dummy_users = ["UserA", "UserB", "UserC"]
 
 # ----------------------
-# 価格のランダム変動
+# 価格更新（ボラティリティを抑制）
 # ----------------------
 def update_price():
     last_price = st.session_state.market_price
-    change = random.randint(-100, 100)  # 激しい乱高下
-    new_price = max(100, last_price + change)
+    change = random.randint(-50, 150)  # 乱高下はこの範囲
+    new_price = max(10, last_price + change)
     st.session_state.market_price = new_price
     st.session_state.price_history.append((datetime.date.today(), new_price))
     if len(st.session_state.price_history) > 100:
         st.session_state.price_history.pop(0)
 
 # ----------------------
-# ダミーユーザー取引生成
+# ダミートレード
 # ----------------------
 def simulate_dummy_trades():
     if random.random() < 0.5:
@@ -74,45 +71,34 @@ def simulate_dummy_trades():
             st.session_state.trade_history.pop()
 
 # ----------------------
-# 売買実行（販売所・取引所共通）
+# トレード実行
 # ----------------------
 def execute_trade(user, side, amount, place):
     price = st.session_state.market_price
     fee_rate = 0.02 if place == "販売所" else 0.005
+    wallet = st.session_state.wallets[user]
 
     if side == "buy":
         cost = price * amount * (1 + fee_rate)
-        if st.session_state.wallet["JPY"] >= cost:
-            st.session_state.wallet["JPY"] -= cost
-            st.session_state.wallet["Ycoin"] += amount
+        if wallet["JPY"] >= cost:
+            wallet["JPY"] -= cost
+            wallet["Ycoin"] += amount
             st.session_state.trade_history.insert(
                 0,
-                {
-                    "user": user,
-                    "side": side,
-                    "amount": amount,
-                    "price": price,
-                    "fee": fee_rate,
-                    "time": datetime.datetime.now().strftime("%H:%M:%S"),
-                    "place": place,
-                },
+                {"user": user, "side": side, "amount": amount, "price": price,
+                 "fee": fee_rate, "time": datetime.datetime.now().strftime("%H:%M:%S"),
+                 "place": place}
             )
     elif side == "sell":
-        if st.session_state.wallet["Ycoin"] >= amount:
+        if wallet["Ycoin"] >= amount:
             revenue = price * amount * (1 - fee_rate)
-            st.session_state.wallet["JPY"] += revenue
-            st.session_state.wallet["Ycoin"] -= amount
+            wallet["JPY"] += revenue
+            wallet["Ycoin"] -= amount
             st.session_state.trade_history.insert(
                 0,
-                {
-                    "user": user,
-                    "side": side,
-                    "amount": amount,
-                    "price": price,
-                    "fee": fee_rate,
-                    "time": datetime.datetime.now().strftime("%H:%M:%S"),
-                    "place": place,
-                },
+                {"user": user, "side": side, "amount": amount, "price": price,
+                 "fee": fee_rate, "time": datetime.datetime.now().strftime("%H:%M:%S"),
+                 "place": place}
             )
     if len(st.session_state.trade_history) > 10:
         st.session_state.trade_history.pop()
@@ -123,100 +109,93 @@ def execute_trade(user, side, amount, place):
 if not st.session_state.user:
     st.title("Y coin 取引")
 
-    col1, col2 = st.columns([1, 3])  # 左側狭く
+    col1, _ = st.columns([1, 3])
     with col1:
         username = st.text_input("ユーザー名", max_chars=20)
 
     if st.button("ログイン") and username:
-        st.session_state.user = username
-        st.rerun()
+        if username not in st.session_state.wallets:
+            st.warning("新規登録してください")
+        else:
+            st.session_state.user = username
+            st.rerun()
 
     if st.button("新規登録") and username:
-        st.session_state.user = username
-        st.session_state.wallet = {"Ycoin": 0.0, "JPY": 5000.0}
-        st.rerun()
+        if username in st.session_state.wallets:
+            st.warning("既に登録済みです")
+        else:
+            st.session_state.wallets[username] = {"Ycoin": 0.0, "JPY": 1000.0}
+            st.session_state.user = username
+            st.success(f"{username} を新規登録しました（1000円(Mock)を付与）")
+            st.rerun()
 
 else:
     st.title("Y coin 取引")
-    st.write(f"👤 ユーザー名: {st.session_state.user}")
+    user = st.session_state.user
+    wallet = st.session_state.wallets[user]
+
+    st.write(f"👤 ユーザー名: {user}")
 
     # ----------------------
-    # ウォレット表示
+    # ウォレット表示（元のスタイルに復帰）
     # ----------------------
-    wallet = st.session_state.wallet
+    st.markdown("### 💰 ウォレット")
     market_value = wallet["Ycoin"] * st.session_state.market_price + wallet["JPY"]
-    st.subheader("ウォレット")
-    st.write(f"Y coin 残高: {wallet['Ycoin']:.2f} Ycoin")
-    st.write(f"円残高: {wallet['JPY']:.2f} 円(Mock)")
-    st.write(f"合計: {market_value:.2f} 円(Mock)")
-
-    # ----------------------
-    # PCは左右分割 / モバイルは自動で上下
-    # ----------------------
-    col1, col2 = st.columns(2)
+    st.write(f"Y coin 残高: **{wallet['Ycoin']:.2f} Ycoin**")
+    st.write(f"円残高: **{wallet['JPY']:.2f} 円(Mock)**")
+    st.write(f"合計: **{market_value:.2f} 円(Mock)** （時価評価込み）")
 
     # ----------------------
     # 販売所
     # ----------------------
-    with col1:
-        st.subheader("販売所（手数料 2%）")
-        update_price()
+    st.markdown("## 🏦 販売所（手数料 2%）")
+    update_price()
 
-        # 価格推移
-        dates, prices = zip(*st.session_state.price_history)
-        fig, ax = plt.subplots()
-        ax.plot(dates, prices, marker="o")
-        ax.set_title("Ycoin 価格推移")
-        ax.set_ylabel("円(Mock)")
-        st.pyplot(fig)
+    dates, prices = zip(*st.session_state.price_history)
+    fig, ax = plt.subplots()
+    ax.plot(dates, prices, marker="o")
+    ax.set_title("Price History")
+    ax.set_ylabel("Price")
+    st.pyplot(fig)
 
-        # 現在価格
-        st.write(f"現在価格: 1.00 Ycoin = {st.session_state.market_price:.2f} 円(Mock)")
+    st.write(f"現在価格: **1.00 Ycoin = {st.session_state.market_price:.2f} 円(Mock)**")
 
-        # 履歴
-        st.write("取引履歴（直近10件）")
-        df = pd.DataFrame(st.session_state.trade_history)
-        if not df.empty:
-            st.dataframe(df.head(10))
+    st.write("取引履歴（直近10件）")
+    df = pd.DataFrame(st.session_state.trade_history)
+    if not df.empty:
+        st.dataframe(df.head(10))
 
-        # 売買
-        side = st.radio("売買選択", ["buy", "sell"], horizontal=True)
-        amount = st.number_input("数量 (Ycoin)", min_value=0.01, step=0.01)
-        if st.button("販売所で実行"):
-            execute_trade(st.session_state.user, side, amount, "販売所")
+    side = st.radio("売買選択", ["buy", "sell"], horizontal=True)
+    amount = st.number_input("数量 (Ycoin)", min_value=0.01, step=0.01)
+    if st.button("販売所で実行"):
+        execute_trade(user, side, amount, "販売所")
 
     # ----------------------
     # 取引所
     # ----------------------
-    with col2:
-        st.subheader("取引所（手数料 0.5%）")
-        st.write("買い板 / 売り板（ダミー）")
-        st.write("（自動マッチング中）")
+    st.markdown("## 🔄 取引所（手数料 0.5%）")
+    st.write("買い板 / 売り板（ダミー表示中）")
 
-        st.write("取引履歴（直近10件）")
-        df = pd.DataFrame(st.session_state.trade_history)
-        if not df.empty:
-            st.dataframe(df.head(10))
+    st.write("取引履歴（直近10件）")
+    df = pd.DataFrame(st.session_state.trade_history)
+    if not df.empty:
+        st.dataframe(df.head(10))
 
-        side = st.radio("売買選択", ["buy", "sell"], horizontal=True, key="ex_side")
-        amount = st.number_input("数量 (Ycoin)", min_value=0.01, step=0.01, key="ex_amt")
-        if st.button("取引所で実行"):
-            execute_trade(st.session_state.user, side, amount, "取引所")
+    side = st.radio("売買選択", ["buy", "sell"], horizontal=True, key="ex_side")
+    amount = st.number_input("数量 (Ycoin)", min_value=0.01, step=0.01, key="ex_amt")
+    if st.button("取引所で実行"):
+        execute_trade(user, side, amount, "取引所")
 
     # ----------------------
-    # ダミートレード更新
+    # ダミートレード
     # ----------------------
     simulate_dummy_trades()
 
     # ----------------------
-    # Hostユーザー用：履歴削除
+    # Hostだけ履歴削除
     # ----------------------
-    if st.session_state.user == "Host":
+    if user == "Host":
         if st.button("取引履歴を全削除"):
             st.session_state.trade_history = []
             st.success("取引履歴を削除しました")
 
-    # ----------------------
-    # 自動更新（1秒ごと）
-    # ----------------------
-    st.experimental_autorefresh(interval=1000, key="refresh")
